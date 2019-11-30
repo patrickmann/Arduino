@@ -13,9 +13,9 @@ const DeviceAddress sensors[sensorCount] = {  // Previously determined
 };
 const char* sensorNames[sensorCount] = { "bath", "bottle 1", "bottle 2", "bottle 3", "bottle 4"};
 const int bottleMinIndex = 1, bottleMaxIndex = 4;
-float lastTemp[sensorCount];
-float currTemp[sensorCount];
-float diffTemp[sensorCount];
+float lastTemp[sensorCount] = {999, 999, 999, 999, 999};
+float currTemp[sensorCount] = {999, 999, 999, 999, 999};
+float diffTemp[sensorCount] = {0, 0, 0, 0, 0};
 float totalPu[sensorCount] = {0, 0, 0, 0, 0};
 bool sensorValid[sensorCount] = {true, true, true, true, true};
 int sensorFlagged[sensorCount] = {0, 0, 0, 0, 0};
@@ -60,18 +60,16 @@ void setup() {
   for (int i = 0 ; i < sensorCount; i++) {
     dallas.setResolution(sensors[i], 10);
   }
-
-  //initialize temperature readings
-  snapTemp();
-  snapDiff();
 }
 
 void loop() {
   Serial.println(" *********** Cycle Reset ************");
   lcd.setRGB(128, 128, 128);
-
   state = waiting;
+  snapTemp();
   bottleTemp = bottleMinTemp(currTemp);
+  //Serial.print("startup2: currTemp[1]="); Serial.println(currTemp[1]);
+    
   while (bottleTemp < startStopAccumulating) {
     Serial.print(bottleTemp);
     Serial.println("C: Waiting to warm up ...");
@@ -81,6 +79,8 @@ void loop() {
         
     delay(waitInterval);
     snapTemp();
+    snapDiff();
+    //Serial.print("startup: currTemp[1]="); Serial.println(currTemp[1]); 
     bottleTemp = bottleMinTemp(currTemp);
   }
 
@@ -157,6 +157,7 @@ void snapTemp() {
     lastTemp[i] = currTemp[i];
     currTemp[i] = getTemperature(i);
   }
+  Serial.println();
 }
 
 void snapDiff() {
@@ -253,9 +254,9 @@ void sensorCheck() {
 float getTemperature(int index) {
   dallas.requestTemperaturesByAddress(sensors[index]);
   float tempC = dallas.getTempC(sensors[index]);
-  //printTemp(index, tempC);
+  printTemp(index, tempC);
 
-  if (tempC == -127.00) {
+  if (-127.00 == tempC) {
     Serial.print("ERROR reading ");
     Serial.println(sensorNames[index]);
     sensorFlagged[index]++;
@@ -265,8 +266,8 @@ float getTemperature(int index) {
       printTemp(index, tempC);
       Serial.println("*****");
     }
-    return tempC;
   }
+  return tempC;
 }
 
 // convert temperature float to string
