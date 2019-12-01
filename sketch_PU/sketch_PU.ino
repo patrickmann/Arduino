@@ -29,9 +29,10 @@ DallasTemperature dallas(&oneWire);
 DS1307 clock; // RTC clock object
 rgb_lcd lcd;  // Display object
 
-const float minPasteurTemp = 30; // 60
-const float startStopAccumulating = 30; // 50 start or stop cycle when passing through this temp
-const float bottleMaxDiff = 2; // max allowable difference between bottle temps in C
+const float minPasteurTemp = 40; // 60
+const float startStopAccumulating = 35; // 50 start or stop cycle when passing through this temp
+const float bottleMaxDiff = 5; // threshold to detect unused sensor
+const float sensorThreshold = 1; // threshold to enable sensor
 const float maxTemp = 80; // alert if exceeded
 const float puTarget = 60; //delta PU = 1/60 * 10 ^ ((T-60)/7)
 const int waitInterval = 10000; // polling interval while waiting for cycle to start
@@ -45,6 +46,7 @@ long currMillis;
 long diffMillis;
 
 enum State {initializing, waiting, accumulating, cooling} state = initializing;
+bool errorState = false;
 char sprintfBuffer[80];
 
 void setup() {
@@ -64,37 +66,46 @@ void setup() {
 
 void loop() {
   Serial.println(" *********** Cycle Reset ************");
-  lcd.setRGB(128, 128, 128);
+  if (!errorState) {
+    // Don't erase prior error color
+    lcd.setRGB(128, 128, 128);
+  }
   state = waiting;
   snapTemp();
   bottleTemp = bottleMinTemp(currTemp);
-  //Serial.print("startup2: currTemp[1]="); Serial.println(currTemp[1]);
-    
+
   while (bottleTemp < startStopAccumulating) {
     Serial.print(bottleTemp);
     Serial.println("C: Waiting to warm up ...");
     lcdPrint1("Warming up");
     sprintf(sprintfBuffer, "%sC", tempToStr(bottleTemp));
     lcdPrint2(sprintfBuffer);
-        
+
     delay(waitInterval);
     snapTemp();
     snapDiff();
-    //Serial.print("startup: currTemp[1]="); Serial.println(currTemp[1]); 
+    sensorCheck();
     bottleTemp = bottleMinTemp(currTemp);
   }
-
+  
   Serial.println("************ Cycle start: accumulating PUs **************");
-  lcd.setRGB(0, 0, 128);
+  errorState = false;
+  lcd.setColor(BLUE);
+  if (nValidSensors() < 2) {
+    Serial.println("ERROR - starting pasteurization with insufficient sensors!");
+    lcd.setColor(RED);
+    errorState = true;
+    delay(10000);
+  }
+
   lastMillis = millis();
   currMillis = lastMillis;
   diffMillis = 0;
   minPu = 0;
-
   state = accumulating;
   while (accumulating == state) {
     snapPu();
-    
+
     lcdPrint1("Pasteurizing");
     sprintf(sprintfBuffer, "%sC   %d PUs", tempToStr(bottleTemp), (int)minPu);
     lcdPrint2(sprintfBuffer);
@@ -102,20 +113,24 @@ void loop() {
     if (minPu >= puTarget) {
       state = cooling;
       Serial.println(" *************** Cycle end: target PU reached *****************");
-      lcd.setRGB(0, 128, 0);
+      if (!errorState) {
+        lcd.setColor(GREEN);
+      }
+      lcdPrint1("Done - cool it!");
     }
 
-    if (bottleTemp < startStopAccumulating) {
+    else if (bottleTemp < startStopAccumulating) {
       state = waiting;
       Serial.println(" ********* Cycle interrupted prematurely ************");
-      lcd.setRGB(128, 0, 0);
+      lcd.setColor(RED);
+      errorState = true;
       lcdPrint("Aborted", "prematurely");
+      delay(10000);
     }
   }
 
   // Continue adding PUs during cooldown phase
   while (cooling == state) {
-    lcdPrint1("Cooling");
     snapPu();
     if (bottleTemp < startStopAccumulating) {
       state = waiting;
@@ -125,31 +140,37 @@ void loop() {
 
 // Delay for measure interval, then get temp and PUs
 void snapPu() {
-    snapTemp();
-    snapDiff();
-    sensorCheck();
-    bottleTemp = bottleMinTemp(currTemp);
+  snapTemp();
+  snapDiff();
+  sensorCheck();
+  bottleTemp = bottleMinTemp(currTemp);
 
-    // Ensure consistent measure intervals of length measureInterval!
-    // Results will be badly wrong, if this is not accurate.
-    currMillis = millis();
-    diffMillis = currMillis - lastMillis;
+  // Ensure consistent measure intervals of length measureInterval!
+  // Results will be badly wrong, if this is not accurate.
+  currMillis = millis();
+  diffMillis = currMillis - lastMillis;
+  int delayMillis = measureInterval - diffMillis;
+  if (delayMillis < 0) {
+    delayMillis = 0;
+    Serial.print("WARNING measure interval exceeded - neg. delay");
+  }
+  else {
     Serial.print("Delaying: "); Serial.println(measureInterval - diffMillis);
     delay(measureInterval - diffMillis);
+  }
 
-    minPu = addPu();
-    lastMillis = millis(); // timestamp immediately after processing the last interval
+  minPu = addPu();
+  lastMillis = millis(); // timestamp immediately after processing the last interval
+  Serial.print("Min PU="); Serial.print(minPu);
+  Serial.print("   PU: ");
+  for (int i = bottleMinIndex; i <= bottleMaxIndex; i++) {
+    Serial.print(totalPu[i]);
+    Serial.print("  ");
+  }
+  Serial.println();
 
-    Serial.print(lastMillis);
-    Serial.print("     Total PU: ");
-    for (int i = bottleMinIndex; i <= bottleMaxIndex; i++) {
-      Serial.print(totalPu[i]);
-      Serial.print("  ");
-    }
-    Serial.println();
-
-    sprintf(sprintfBuffer, "%sC   %d PUs", tempToStr(bottleTemp), (int)minPu);
-    lcdPrint2(sprintfBuffer);
+  sprintf(sprintfBuffer, "%sC   %d PUs", tempToStr(bottleTemp), (int)minPu);
+  lcdPrint2(sprintfBuffer);
 }
 
 void snapTemp() {
@@ -182,6 +203,7 @@ float addPu() {
       }
     }
   }
+  return minPu;
 }
 
 float bottleMaxTemp(float tempArray[]) {
@@ -208,39 +230,22 @@ float findMin(float array[], int start, int end) {
   return min;
 }
 
+// Sensor sanity check:
+// - ignore sensors not being used
+// - handle delayed immersion into bath
+// - but never enable a sensor during a running PU cycle
 void sensorCheck() {
-  // warn about suspicious hi/lo discrepancy
-  float diff[sensorCount];
   float min = bottleMinTemp(currTemp);
   float max = bottleMaxTemp(currTemp);
   if (max - min > bottleMaxDiff) {
-    Serial.println("WARNING: excessive discrepancy ");
+    Serial.println("High discrepancy - seeking unused sensors");
     Serial.print(max - min);
     Serial.println("C");
-  }
 
-  // check for stuck sensor - broken or not in use
-  int nValid = 0;
-  float avgDiff = 0;
-  for (int i = bottleMinIndex; i <= bottleMaxIndex; i++) {
-    if (sensorValid[i]) {
-      nValid++;
-      avgDiff += diffTemp[i];
-    }
-  }
-
-  if (nValid < 2) {
-    Serial.println("ERROR less than 2 valid bottle sensors!");
-  }
-  if (nValid > 0) {
-    avgDiff /= nValid;
-  }
-
-  for (int i = bottleMinIndex; i <= bottleMaxIndex; i++) {
-    if (sensorValid[i]) {
-      if (diffTemp[i] == 0 && avgDiff > 0.1) {
-        sensorFlagged[i]++;
-        if (sensorFlagged[i] > maxStrikes) {
+    for (int i = bottleMinIndex; i <= bottleMaxIndex; i++) {
+      if (sensorValid[i]) {
+        if (currTemp[i] - min < sensorThreshold) {
+          // stuck at low temp - assuming not in use
           sensorValid[i] = false;
           Serial.print("Invalidated stuck sensor ");
           printTemp(i, currTemp[i]);
@@ -249,6 +254,35 @@ void sensorCheck() {
       }
     }
   }
+
+  else if (waiting == state) {
+    // No discrepancy - recheck for delayed immersion and re-enable sensor
+    // But only if we have not already started tracking PUs!
+    for (int i = bottleMinIndex; i <= bottleMaxIndex; i++) {
+      if (!sensorValid[i] && (max - currTemp[i] < sensorThreshold)) {
+        sensorValid[i] = true;
+        Serial.print("Re-enabling sensor ");
+        printTemp(i, currTemp[i]);
+        Serial.println("*****");
+      }
+    }
+  }
+}
+
+int nValidSensors() {
+  int nValid = 0;
+  for (int i = bottleMinIndex; i <= bottleMaxIndex; i++) {
+    if (sensorValid[i]) {
+      nValid++;
+    }
+  }
+  Serial.print("Valid sensors="); Serial.println(nValid);
+  
+  // Need at least 2 valid sensors for high confidence results
+  if (nValid < 2) {
+    Serial.println("WARNING less than 2 valid bottle sensors!");
+  }
+  return nValid; 
 }
 
 float getTemperature(int index) {
@@ -303,5 +337,5 @@ void lcdPrint2(const char* line2) {
 }
 
 //Date;Time;TotalPU;Bath;Bottle1;Bottle2;Bottle3;Bottle4;PU1;PU2;PU3;PU4
-//2019-11-27;8:55:32;0,00 ;16,00 ;15,00 ;15,00 ;15,00 ;15,00 ;0,10 ;0,20 ;0,30 ;0,40 
-//2019-11-27;8:55:33;0,00 ;16,00 ;15,00 ;15,00 ;15,00 ;15,00 ;0,10 ;0,20 ;0,30 ;0,40 
+//2019-11-27;8:55:32;0,00 ;16,00 ;15,00 ;15,00 ;15,00 ;15,00 ;0,10 ;0,20 ;0,30 ;0,40
+//2019-11-27;8:55:33;0,00 ;16,00 ;15,00 ;15,00 ;15,00 ;15,00 ;0,10 ;0,20 ;0,30 ;0,40

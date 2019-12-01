@@ -9,8 +9,8 @@ void setup() {
  // Die Verbindung zur Uhr aufbauen
  clock.begin();
  // Die Zeit einstellen
- clock.fillByYMD(2017, 9, 24);
- clock.fillByHMS(18, 53, 15);
+ clock.fillByYMD(2019, 11, 30);
+ clock.fillByHMS(16, 50, 00);
  clock.fillDayOfWeek(SAT);
  clock.setTime();
 }
@@ -21,16 +21,16 @@ void loop() {
 }
 void printTime() {
  clock.getTime(); // Zeit vom Chip abfragen
- Serial.print(clock.hour, DEC);
+ Serial.print(clock.hour);
  Serial.print(":");
- Serial.print(clock.minute, DEC);
+ Serial.print(clock.minute);
  Serial.print(":");
- Serial.print(clock.second, DEC);
+ Serial.print(clock.second);
  Serial.print(" | ");
- Serial.print(clock.dayOfMonth, DEC);
+ Serial.print(clock.dayOfMonth);
  Serial.print(".");
- Serial.print(clock.month, DEC);
+ Serial.print(clock.month);
  Serial.print(".");
- Serial.print(clock.year, DEC);
+ Serial.print(clock.year);
  Serial.println();
 }
