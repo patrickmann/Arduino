@@ -48,15 +48,52 @@ long diffMillis;
 enum State {initializing, waiting, accumulating, cooling} state = initializing;
 bool errorState = false;
 char sprintfBuffer[80];
-File dataFile;
+char logFileName[11]; //yymmdd.csv 
 
+
+// convert temperature float to string
+// assume a format like this: 999.99
+char conversionBuffer[7];
+char* tempToStr(float temp) {
+  //dtostrf(floatvar, StringLengthIncDecimalPoint, numVarsAfterDecimal, charbuf);
+  dtostrf(temp, 6, 2, conversionBuffer);
+  return conversionBuffer;
+}
+
+void snapToSD() {
+  //Date;Time;TotalPU;Bath;Bottle1;Bottle2;Bottle3;Bottle4;PU1;PU2;PU3;PU4
+  //2019-11-27;8:55:32;0,00 ;16,00 ;15,00 ;15,00 ;15,00 ;15,00 ;0,10 ;0,20 ;0,30 ;0,40
+  //2019-11-27;8:55:33;0,00 ;16,00 ;15,00 ;15,00 ;15,00 ;15,00 ;0,10 ;0,20 ;0,30 ;0,40
+
+  char buffer[90];
+  clock.getTime();
+  sprintf(buffer, "20%02d-%02d-%02d;%d:%d:%d;", 
+    clock.year, clock.month, clock.dayOfMonth,
+    clock.hour, clock.minute, clock.second);
+    
+  strcat(buffer, tempToStr(currTemp[0])); strcat(buffer, ";");
+  strcat(buffer, tempToStr(currTemp[1])); strcat(buffer, ";");
+  strcat(buffer, tempToStr(currTemp[2])); strcat(buffer, ";");
+  strcat(buffer, tempToStr(currTemp[3])); strcat(buffer, ";");
+  strcat(buffer, tempToStr(currTemp[4])); strcat(buffer, ";");
+
+  strcat(buffer, tempToStr(totalPu[0])); strcat(buffer, ";");
+  strcat(buffer, tempToStr(totalPu[1])); strcat(buffer, ";");
+  strcat(buffer, tempToStr(totalPu[2])); strcat(buffer, ";");
+  strcat(buffer, tempToStr(totalPu[3])); 
+
+  writeToSD(buffer, true);
+}
+  
 void setup() {
   clock.begin();
+  clock.getTime();
+  sprintf(logFileName, "%02d%02d%02d", clock.year, clock.month, clock.dayOfMonth); 
+  
   lcd.begin(16, 2); // Display initialisieren - 2 Zeilen mit jeweils 16 Zeichen
-
   Serial.begin(9600);
-  dallas.begin();
 
+  dallas.begin();
   // set the resolution to 10 bit (Can be 9 to 12 bits .. lower is faster)
   for (int i = 0 ; i < sensorCount; i++) {
     dallas.setResolution(sensors[i], 10);
@@ -68,8 +105,6 @@ void setup() {
   else {
     Serial.println(F("SD-Card failed"));
   }
-  String line = String("Hallo Welt");
-  writeToSD(line);
 }
 
 void loop() {
@@ -93,6 +128,8 @@ void loop() {
     snapTemp();
     sensorCheck();
     bottleTemp = bottleMinTemp(currTemp);
+
+    snapToSD();
   }
 
   Serial.println(F("*** Cycle start: accumulating"));
@@ -112,6 +149,7 @@ void loop() {
   state = accumulating;
   while (accumulating == state) {
     snapPu();
+    snapToSD();
 
     lcdPrint1("Pasteurizing");
     sprintf(sprintfBuffer, "%sC   %d PUs", tempToStr(bottleTemp), (int)minPu);
@@ -295,15 +333,6 @@ float getTemperature(int index) {
   return tempC;
 }
 
-// convert temperature float to string
-// assume a format like this: 999.99
-char conversionBuffer[6];
-char* tempToStr(float temp) {
-  //dtostrf(floatvar, StringLengthIncDecimalPoint, numVarsAfterDecimal, charbuf);
-  dtostrf(temp, 6, 2, conversionBuffer);
-  return conversionBuffer;
-}
-
 void printTemp (int index, float temp) {
   Serial.print(sensorNames[index]);
   Serial.print(F(": "));
@@ -327,15 +356,16 @@ void lcdPrint2(const char* line2) {
   lcd.print(line2);
 }
 
-//Date;Time;TotalPU;Bath;Bottle1;Bottle2;Bottle3;Bottle4;PU1;PU2;PU3;PU4
-//2019-11-27;8:55:32;0,00 ;16,00 ;15,00 ;15,00 ;15,00 ;15,00 ;0,10 ;0,20 ;0,30 ;0,40
-//2019-11-27;8:55:33;0,00 ;16,00 ;15,00 ;15,00 ;15,00 ;15,00 ;0,10 ;0,20 ;0,30 ;0,40
-void writeToSD(String line) {
-  File dataFile = SD.open("test.csv", FILE_WRITE);
+void writeToSD(char* data, bool bNewLine) {
+  File dataFile = SD.open(logFileName, FILE_WRITE);
   if (dataFile) {
-    dataFile.println(line); // Auf die SD-Karte schreiben
+    dataFile.print(data); // Auf die SD-Karte schreiben
+    Serial.print(data);
+    if (bNewLine) {
+      dataFile.println();
+      Serial.println();
+    }
     dataFile.close();       // Datei schließen
-    Serial.println(line);
   } else {
     Serial.println(F("Error opening datafile"));
   }
