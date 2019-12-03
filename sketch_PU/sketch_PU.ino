@@ -3,10 +3,13 @@
 #include <DS1307.h>
 #include <rgb_lcd.h>
 #include <SPI.h>
-#include <SD.h>
 
-const int selectedChip = 4;
-const int sensorCount = 5;
+#include <SdFat.h>
+SdFat SD;
+File dataFile;
+
+const byte selectedChip = 4;
+const byte sensorCount = 5;
 const DeviceAddress sensors[sensorCount] = {  // Previously determined
   {0x28, 0xAA, 0x98, 0xDA, 0x53, 0x14, 0x01, 0x08},
   {0x28, 0xAA, 0xE5, 0x3D, 0x54, 0x14, 0x01, 0x3C},
@@ -15,7 +18,7 @@ const DeviceAddress sensors[sensorCount] = {  // Previously determined
   {0x28, 0x9A, 0xA5, 0xCF, 0x5E, 0x14, 0x01, 0x24}
 };
 const char* sensorNames[sensorCount] = { "w", "b1", "b2", "b3", "b4"};
-const int bottleMinIndex = 1, bottleMaxIndex = 4;
+const byte bottleMinIndex = 1, bottleMaxIndex = 4;
 float lastTemp[sensorCount] = {999, 999, 999, 999, 999};
 float currTemp[sensorCount] = {999, 999, 999, 999, 999};
 float totalPu[sensorCount] = {0, 0, 0, 0, 0};
@@ -29,7 +32,6 @@ DallasTemperature dallas(&oneWire);
 DS1307 clock; // RTC clock object
 rgb_lcd lcd;  // Display object
 
-const float minPasteurTemp = 40; // 60
 const float startStopAccumulating = 35; // 50 start or stop cycle when passing through this temp
 const float bottleMaxDiff = 5; // threshold to detect unused sensor
 const float sensorThreshold = 1; // threshold to enable sensor
@@ -37,7 +39,6 @@ const float maxTemp = 80; // alert if exceeded
 const float puTarget = 60; //delta PU = 1/60 * 10 ^ ((T-60)/7)
 const int waitInterval = 10000; // polling interval while waiting for cycle to start
 const float measureInterval = 5000; // polling interval during cycle
-const float fractionalMin = measureInterval / 60000; // measure interval in minutes
 
 float bottleTemp;
 float minPu;
@@ -71,118 +72,22 @@ void snapToSD() {
     clock.year, clock.month, clock.dayOfMonth,
     clock.hour, clock.minute, clock.second);
     
+  strcat(buffer, tempToStr(minPu)); strcat(buffer, ";");
+
   strcat(buffer, tempToStr(currTemp[0])); strcat(buffer, ";");
   strcat(buffer, tempToStr(currTemp[1])); strcat(buffer, ";");
   strcat(buffer, tempToStr(currTemp[2])); strcat(buffer, ";");
   strcat(buffer, tempToStr(currTemp[3])); strcat(buffer, ";");
   strcat(buffer, tempToStr(currTemp[4])); strcat(buffer, ";");
 
-  strcat(buffer, tempToStr(totalPu[0])); strcat(buffer, ";");
   strcat(buffer, tempToStr(totalPu[1])); strcat(buffer, ";");
   strcat(buffer, tempToStr(totalPu[2])); strcat(buffer, ";");
-  strcat(buffer, tempToStr(totalPu[3])); 
+  strcat(buffer, tempToStr(totalPu[3])); strcat(buffer, ";");
+  strcat(buffer, tempToStr(totalPu[4])); 
 
-  writeToSD(buffer, true);
+  writeToSD(buffer);
 }
   
-void setup() {
-  clock.begin();
-  clock.getTime();
-  sprintf(logFileName, "%02d%02d%02d", clock.year, clock.month, clock.dayOfMonth); 
-  
-  lcd.begin(16, 2); // Display initialisieren - 2 Zeilen mit jeweils 16 Zeichen
-  Serial.begin(9600);
-
-  dallas.begin();
-  // set the resolution to 10 bit (Can be 9 to 12 bits .. lower is faster)
-  for (int i = 0 ; i < sensorCount; i++) {
-    dallas.setResolution(sensors[i], 10);
-  }
-
-  if (SD.begin(selectedChip)) {
-    Serial.println(F("SD-Card initialized."));
-  }
-  else {
-    Serial.println(F("SD-Card failed"));
-  }
-}
-
-void loop() {
-  Serial.println(F("*** Cycle Reset"));
-  if (!errorState) {
-    // Don't erase prior error color
-    lcd.setRGB(128, 128, 128);
-  }
-  state = waiting;
-  snapTemp();
-  bottleTemp = bottleMinTemp(currTemp);
-
-  while (bottleTemp < startStopAccumulating) {
-    Serial.print(bottleTemp);
-    Serial.println(F("C: Waiting to warm up ..."));
-    lcdPrint1("Warming up");
-    sprintf(sprintfBuffer, "%sC", tempToStr(bottleTemp));
-    lcdPrint2(sprintfBuffer);
-
-    delay(waitInterval);
-    snapTemp();
-    sensorCheck();
-    bottleTemp = bottleMinTemp(currTemp);
-
-    snapToSD();
-  }
-
-  Serial.println(F("*** Cycle start: accumulating"));
-  errorState = false;
-  lcd.setColor(BLUE);
-  if (nValidSensors() < 2) {
-    Serial.println(F("ERROR - insufficient sensors!"));
-    lcd.setColor(RED);
-    errorState = true;
-    delay(10000);
-  }
-
-  lastMillis = millis();
-  currMillis = lastMillis;
-  diffMillis = 0;
-  minPu = 0;
-  state = accumulating;
-  while (accumulating == state) {
-    snapPu();
-    snapToSD();
-
-    lcdPrint1("Pasteurizing");
-    sprintf(sprintfBuffer, "%sC   %d PUs", tempToStr(bottleTemp), (int)minPu);
-    lcdPrint2(sprintfBuffer);
-
-    if (minPu >= puTarget) {
-      state = cooling;
-      Serial.println(F(" *** Cycle end: target PU reached"));
-      if (!errorState) {
-        lcd.setColor(GREEN);
-      }
-      lcdPrint1("Done - cool it!");
-    }
-
-    else if (bottleTemp < startStopAccumulating) {
-      state = waiting;
-      Serial.println(F(" *** Cycle interrupted prematurely"));
-      lcd.setColor(RED);
-      errorState = true;
-      lcdPrint("Aborted", "prematurely");
-      delay(10000);
-    }
-  }
-
-  // Continue adding PUs during cooldown phase
-  while (cooling == state) {
-    snapPu();
-    if (bottleTemp < startStopAccumulating) {
-      state = waiting;
-    }
-  }
-}
-
 // Delay for measure interval, then get temp and PUs
 void snapPu() {
   snapTemp();
@@ -215,6 +120,7 @@ void snapPu() {
 
   sprintf(sprintfBuffer, "%sC   %d PUs", tempToStr(bottleTemp), (int)minPu);
   lcdPrint2(sprintfBuffer);
+  snapToSD();
 }
 
 void snapTemp() {
@@ -227,11 +133,15 @@ void snapTemp() {
 
 // Increment PUs and return the lowest valid total PU value
 float addPu() {
+  const float minPasteurTemp = 40; // 60
+  const float fractionalMin = measureInterval / 60000; // measure interval in minutes
+  
   float minPu = 999;
   snapTemp();
   for (int i = bottleMinIndex; i <= bottleMaxIndex; i++) {
     if (sensorValid[i]) {
-      float deltaPu = fractionalMin * pow(10, ((currTemp[i] - minPasteurTemp) / 7));
+      float avgTemp = (currTemp[i] + lastTemp[i]) / 2;
+      float deltaPu = fractionalMin * pow(10, ((avgTemp - minPasteurTemp) / 7));
       totalPu[i] += deltaPu;
       if (totalPu[i] < minPu) {
         minPu = totalPu[i];
@@ -356,17 +266,132 @@ void lcdPrint2(const char* line2) {
   lcd.print(line2);
 }
 
-void writeToSD(char* data, bool bNewLine) {
-  File dataFile = SD.open(logFileName, FILE_WRITE);
-  if (dataFile) {
-    dataFile.print(data); // Auf die SD-Karte schreiben
-    Serial.print(data);
-    if (bNewLine) {
-      dataFile.println();
-      Serial.println();
-    }
-    dataFile.close();       // Datei schließen
-  } else {
-    Serial.println(F("Error opening datafile"));
+bool writeToSD(const char* data) {
+  Serial.println(data);
+  if (1 > dataFile.println(data)) {
+    Serial.print(F("Error writing to SD: ")); Serial.println(logFileName);
+    return false;
+  }      
+  dataFile.sync();    
+  return true;
+}
+
+bool initSD() {
+  if (!SD.begin(selectedChip)) 
+    return false;
+    
+  clock.begin();
+  clock.getTime();
+  sprintf(logFileName, "%02d%02d%02d.csv", clock.year, clock.month, clock.dayOfMonth); 
+  dataFile = SD.open(logFileName, FILE_WRITE);
+  if (!dataFile) {
+    Serial.println(F("Error opening SD datafile"));
+    return false;
   }
+
+  if (!writeToSD("Date;Time;TotalPU;Bath;B1;B2;B3;B4;PU1;PU2;PU3;PU4")) 
+    return false;
+    
+  return true;
+}
+
+// Abort execution
+void halt(const char* msg) {
+  dataFile.close();
+  Serial.println(msg);
+  lcd.setColor(RED);
+  lcdPrint1(msg);
+  while(true);
+}
+
+void setup() {  
+  lcd.begin(16, 2); // Display initialisieren - 2 Zeilen mit jeweils 16 Zeichen
+  Serial.begin(9600);
+
+  dallas.begin();
+  // set the resolution to 10 bit (Can be 9 to 12 bits .. lower is faster)
+  for (int i = 0 ; i < sensorCount; i++) {
+    dallas.setResolution(sensors[i], 10);
+  }
+}
+
+void loop() {
+  if (initSD()) {
+    Serial.println(F("SD-Card initialized."));
+  }
+  else {
+    halt("SD-Card error");
+  }
+  
+  Serial.println(F("*** Cycle Reset"));
+  if (!errorState) {
+    // Don't erase prior error color
+    lcd.setRGB(128, 128, 128);
+  }
+  state = waiting;
+  snapTemp();
+  bottleTemp = bottleMinTemp(currTemp);
+
+  while (bottleTemp < startStopAccumulating) {
+    Serial.print(bottleTemp);
+    Serial.println(F("C: Waiting to warm up ..."));
+    lcdPrint1("Warming up");
+    sprintf(sprintfBuffer, "%sC", tempToStr(bottleTemp));
+    lcdPrint2(sprintfBuffer);
+
+    delay(waitInterval);
+    snapTemp();
+    sensorCheck();
+    bottleTemp = bottleMinTemp(currTemp);
+  }
+
+  Serial.println(F("*** Cycle start: accumulating"));
+  errorState = false;
+  lcd.setColor(BLUE);
+  if (nValidSensors() < 2) {
+    Serial.println(F("ERROR - insufficient sensors!"));
+    lcd.setColor(RED);
+    errorState = true;
+    delay(10000);
+  }
+
+  lastMillis = millis();
+  currMillis = lastMillis;
+  diffMillis = 0;
+  minPu = 0;
+  state = accumulating;
+  while (accumulating == state) {
+    snapPu();
+
+    lcdPrint1("Pasteurizing");
+    sprintf(sprintfBuffer, "%sC   %d PUs", tempToStr(bottleTemp), (int)minPu);
+    lcdPrint2(sprintfBuffer);
+
+    if (minPu >= puTarget) {
+      state = cooling;
+      Serial.println(F(" *** Cycle end: target PU reached"));
+      if (!errorState) {
+        lcd.setColor(GREEN);
+      }
+      lcdPrint1("Done - cool it!");
+    }
+
+    else if (bottleTemp < startStopAccumulating) {
+      state = waiting;
+      Serial.println(F(" *** Cycle interrupted prematurely"));
+      lcd.setColor(RED);
+      errorState = true;
+      lcdPrint("Aborted", "prematurely");
+      delay(10000);
+    }
+  }
+
+  // Continue adding PUs during cooldown phase
+  while (cooling == state) {
+    snapPu();
+    if (bottleTemp < startStopAccumulating) {
+      state = waiting;
+    }
+  }
+  dataFile.close();
 }
