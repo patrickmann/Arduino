@@ -250,15 +250,20 @@ void printTemp (int index, float temp) {
   Serial.print(F("C   "));
 }
 
-void lcdPrint(const char* line1, const char* line2) {
+void lcdPrint(const __FlashStringHelper* line1, const __FlashStringHelper* line2) {
   lcdPrint1(line1);
   lcdPrint2(line2);
 }
 
-void lcdPrint1(const char* line1) {
+void lcdPrint1(const __FlashStringHelper* line1) {
   lcd.clear();
   lcd.setCursor(0, 0); // Cursor im Display auf den Anfang der ersten Zeile setzen
   lcd.print(line1);
+}
+
+void lcdPrint2(const __FlashStringHelper* line2) {
+  lcd.setCursor(0, 1); // Cursor im Display auf den Anfang der zweiten Zeile setzen
+  lcd.print(line2);
 }
 
 void lcdPrint2(const char* line2) {
@@ -296,7 +301,7 @@ bool initSD() {
 }
 
 // Abort execution
-void halt(const char* msg) {
+void halt(const __FlashStringHelper* msg) {
   dataFile.close();
   Serial.println(msg);
   lcd.setColor(RED);
@@ -320,7 +325,7 @@ void loop() {
     Serial.println(F("SD-Card initialized."));
   }
   else {
-    halt("SD-Card error");
+    halt(F("SD-Card error"));
   }
   
   Serial.println(F("*** Cycle Reset"));
@@ -335,7 +340,7 @@ void loop() {
   while (bottleTemp < startStopAccumulating) {
     Serial.print(bottleTemp);
     Serial.println(F("C: Waiting to warm up ..."));
-    lcdPrint1("Warming up");
+    lcdPrint1(F("Warming up"));
     sprintf(sprintfBuffer, "%sC", tempToStr(bottleTemp));
     lcdPrint2(sprintfBuffer);
 
@@ -363,7 +368,7 @@ void loop() {
   while (accumulating == state) {
     snapPu();
 
-    lcdPrint1("Pasteurizing");
+    lcdPrint1(F("Pasteurizing"));
     sprintf(sprintfBuffer, "%sC   %d PUs", tempToStr(bottleTemp), (int)minPu);
     lcdPrint2(sprintfBuffer);
 
@@ -373,7 +378,7 @@ void loop() {
       if (!errorState) {
         lcd.setColor(GREEN);
       }
-      lcdPrint1("Done - cool it!");
+      lcdPrint1(F("Done - cool it!"));
     }
 
     else if (bottleTemp < startStopAccumulating) {
@@ -381,7 +386,7 @@ void loop() {
       Serial.println(F(" *** Cycle interrupted prematurely"));
       lcd.setColor(RED);
       errorState = true;
-      lcdPrint("Aborted", "prematurely");
+      lcdPrint(F("Aborted"), F("prematurely"));
       delay(10000);
     }
   }
