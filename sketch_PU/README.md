@@ -8,8 +8,8 @@ The thresholds and pasteurization targets are based on hard cider; but you can e
 
 ## How it works
 After startup the PU meter waits for temperature to increase to measuring threshold. It then starts adding up PUs and alerts
-when the target threshold is reached. We track PU accummulation both as temperature rises and falls; i.e. user may remove
-material from the bath before hitting the target PU, taking advantage of PU accummulation during cooldown.
+when the target threshold is reached. We track PU accummulation both as temperature rises and falls. I.e. product may be removed
+from the bath before hitting the target PU, taking advantage of PU accummulation during cooldown, while still obtaining accurate PU totals.
 
 Smart detection of sensors allows user to insert sensors one at a time. As long as the setup is complete before hitting the 
 threshold for PU accummulation, all sensors will be used for PU measurement. Sensors inserted after PU accummulation has started will be ignored to avoid erroneous results. Thresholds tests are based on the lowest valid temperature and PU values across all sensors - this keeps us on the safe side when there are cool spots in the bath.
@@ -17,16 +17,16 @@ threshold for PU accummulation, all sensors will be used for PU measurement. Sen
 ## Features
 * Compute PUs from temperature readings
 * Compare readings across multiple sensors and check for consistency - require at least 2 sensors for sanity checking
-* Identify and ignore unused or disconnected sensors
+* Support arbitrary number of sensors (subject to memory limitations)
+* Identify and ignore unused (active but not immersed) and disconnected sensors
 * Output CSV data log with date and time stamps to SD card for import to Excel
 * Output data points to serial
 * Output user prompts and data to LCD
 * Alert user via buzzer to important state transitions or errors
 
-## Some detected error states
-* Not enough sensors - need at least 2
+## Some flagged error states
+* Not enough sensors for high confidence result - need at least 2 product sensors
 * Pasteurization cycle aborted prematurely 
-* SD card not working
 * Excessive difference between sensors
 * Water too hot
 
