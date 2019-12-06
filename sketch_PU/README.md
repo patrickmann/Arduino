@@ -8,8 +8,7 @@ when the target threshold is reached. We track PU accummulation both as temperat
 material from the bath before hitting the target PU, taking advantage of PU accummulation during cooldown.
 
 Smart detection of sensors allows user to insert sensors one at a time. As long as the setup is complete before hitting the 
-threshold for PU accummulation, all sensors will be used for PU measurement. Sensors inserted after PU accummulation has started will be ignored to avoid erroneous results. Thresholds tests are based on the lowest valid temperature and PU values across all sensors
-- this keeps us on the safe side when there are cool spots in the bath.
+threshold for PU accummulation, all sensors will be used for PU measurement. Sensors inserted after PU accummulation has started will be ignored to avoid erroneous results. Thresholds tests are based on the lowest valid temperature and PU values across all sensors - this keeps us on the safe side when there are cool spots in the bath.
 
 ## Features
 * Compute PUs from temperature readings
