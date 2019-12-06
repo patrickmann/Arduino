@@ -8,7 +8,6 @@
 SdFat SD;
 File dataFile;
 
-const byte selectedChip = 4;
 const byte sensorCount = 5;
 const DeviceAddress sensors[sensorCount] = {  // Previously determined
   {0x28, 0xAA, 0x98, 0xDA, 0x53, 0x14, 0x01, 0x08},
@@ -21,7 +20,7 @@ const char* sensorNames[sensorCount] = { "w", "b1", "b2", "b3", "b4"};
 const byte bottleMinIndex = 1, bottleMaxIndex = 4;
 float lastTemp[sensorCount] = {999, 999, 999, 999, 999};
 float currTemp[sensorCount] = {999, 999, 999, 999, 999};
-float totalPu[sensorCount] = {0, 0, 0, 0, 0};
+float totalPu[sensorCount] = {0, 0, 0, 0, 0}; // totalPu[0] is not used, but simplifies things
 bool sensorValid[sensorCount] = {true, true, true, true, true};
 
 // Setup a oneWire instance to communicate with any OneWire devices
@@ -33,8 +32,8 @@ DS1307 clock; // RTC clock object
 rgb_lcd lcd;  // Display object
 
 const float startStopAccumulating = 35; // 50 start or stop cycle when passing through this temp
-const float bottleMaxDiff = 5; // threshold to detect unused sensor
-const float sensorThreshold = 1; // threshold to enable sensor
+const float bottleMaxDiff = 5; // threshold in degrees C to detect unused sensor
+const float sensorThreshold = 1; // threshold in degrees C to enable sensor
 const float maxTemp = 80; // alert if exceeded
 const float puTarget = 60; //delta PU = 1/60 * 10 ^ ((T-60)/7)
 const int waitInterval = 10000; // polling interval while waiting for cycle to start
@@ -282,7 +281,7 @@ bool writeToSD(const char* data) {
 }
 
 bool initSD() {
-  if (!SD.begin(selectedChip)) 
+   if (!SD.begin(4)) // selected chip = 4
     return false;
     
   clock.begin();
