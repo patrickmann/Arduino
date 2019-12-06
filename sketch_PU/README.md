@@ -2,6 +2,8 @@
 Sketch to power a device to measure Pasteurization Units in a water bath pasteurizer. 
 The thresholds and pasteurization targets are based on hard cider; but you can easily modify them for other applications.
 
+Disclaimer: use entirely at your own risk. Accuracy and validity of results is NOT guaranteed.
+
 ## How it works
 After startup the PU meter waits for temperature to increase to measuring threshold. It then starts adding up PUs and alerts
 when the target threshold is reached. We track PU accummulation both as temperature rises and falls; i.e. user may remove
