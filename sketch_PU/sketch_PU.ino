@@ -8,6 +8,8 @@
 SdFat SD;
 File dataFile;
 
+const byte buzzerPin = 6;
+
 const byte sensorCount = 5;
 const DeviceAddress sensors[sensorCount] = {  // Previously determined
   {0x28, 0xAA, 0x98, 0xDA, 0x53, 0x14, 0x01, 0x08},
@@ -58,6 +60,23 @@ char* tempToStr(float temp) {
   //dtostrf(floatvar, StringLengthIncDecimalPoint, numVarsAfterDecimal, charbuf);
   dtostrf(temp, 6, 2, conversionBuffer);
   return conversionBuffer;
+}
+
+void buzz(int duration, int repeat) {
+  for (int i=0; i<=repeat; i++) {
+    digitalWrite(buzzerPin, HIGH);
+    delay(duration);
+    digitalWrite(buzzerPin, LOW);
+    delay(duration);
+  }
+}
+
+void buzzError() {
+  buzz(100,8);
+}
+
+void buzzAlert() {
+  buzz(1000,1);
 }
 
 void snapToSD() {
@@ -301,6 +320,7 @@ bool initSD() {
 
 // Abort execution
 void halt(const __FlashStringHelper* msg) {
+  buzzError();
   dataFile.close();
   Serial.println(msg);
   lcd.setColor(RED);
@@ -309,9 +329,12 @@ void halt(const __FlashStringHelper* msg) {
 }
 
 void setup() {  
+  pinMode(buzzerPin, OUTPUT);
+
   lcd.begin(16, 2); // Display initialisieren - 2 Zeilen mit jeweils 16 Zeichen
   Serial.begin(9600);
 
+  // Temperature sensors
   dallas.begin();
   // set the resolution to 10 bit (Can be 9 to 12 bits .. lower is faster)
   for (int i = 0 ; i < sensorCount; i++) {
@@ -328,6 +351,7 @@ void loop() {
   }
   
   Serial.println(F("*** Cycle Reset"));
+  buzzAlert();
   if (!errorState) {
     // Don't erase prior error color
     lcd.setRGB(128, 128, 128);
@@ -353,12 +377,16 @@ void loop() {
   errorState = false;
   lcd.setColor(BLUE);
   if (nValidSensors() < 2) {
+    buzzError();
     Serial.println(F("ERROR - insufficient sensors!"));
     lcd.setColor(RED);
     errorState = true;
     delay(10000);
   }
-
+  else {
+    buzzAlert();
+  }
+  
   lastMillis = millis();
   currMillis = lastMillis;
   diffMillis = 0;
@@ -376,6 +404,7 @@ void loop() {
       Serial.println(F(" *** Cycle end: target PU reached"));
       if (!errorState) {
         lcd.setColor(GREEN);
+        buzzAlert();
       }
       lcdPrint1(F("Done - cool it!"));
     }
@@ -383,6 +412,7 @@ void loop() {
     else if (bottleTemp < startStopAccumulating) {
       state = waiting;
       Serial.println(F(" *** Cycle interrupted prematurely"));
+      buzzError();
       lcd.setColor(RED);
       errorState = true;
       lcdPrint(F("Aborted"), F("prematurely"));
