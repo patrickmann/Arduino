@@ -5,6 +5,9 @@
 #include <SPI.h>
 
 #include <SdFat.h>
+
+#define P(x) (__FlashStringHelper*)(x)    // F-Makro für Variablen
+
 SdFat SD;
 File dataFile;
 
@@ -72,11 +75,11 @@ void buzz(int duration, int repeat) {
 }
 
 void buzzError() {
-  buzz(100,8);
+  //buzz(80,10);
 }
 
 void buzzAlert() {
-  buzz(1000,1);
+  //buzz(1000,1);
 }
 
 void snapToSD() {
@@ -137,7 +140,7 @@ void snapPu() {
   Serial.println();
 
   sprintf(sprintfBuffer, "%sC   %d PUs", tempToStr(bottleTemp), (int)minPu);
-  lcdPrint2(sprintfBuffer);
+  lcdPrint2(P(sprintfBuffer));
   snapToSD();
 }
 
@@ -232,22 +235,6 @@ void sensorCheck() {
   }
 }
 
-int nValidSensors() {
-  int nValid = 0;
-  for (int i = bottleMinIndex; i <= bottleMaxIndex; i++) {
-    if (sensorValid[i]) {
-      nValid++;
-    }
-  }
-  Serial.print(F("Valid sensors=")); Serial.println(nValid);
-
-  // Need at least 2 valid sensors for high confidence results
-  if (nValid < 2) {
-    Serial.println(F("WARNING less than 2 valid bottle sensors!"));
-  }
-  return nValid;
-}
-
 float getTemperature(int index) {
   dallas.requestTemperaturesByAddress(sensors[index]);
   float tempC = dallas.getTempC(sensors[index]);
@@ -280,11 +267,6 @@ void lcdPrint1(const __FlashStringHelper* line1) {
 }
 
 void lcdPrint2(const __FlashStringHelper* line2) {
-  lcd.setCursor(0, 1); // Cursor im Display auf den Anfang der zweiten Zeile setzen
-  lcd.print(line2);
-}
-
-void lcdPrint2(const char* line2) {
   lcd.setCursor(0, 1); // Cursor im Display auf den Anfang der zweiten Zeile setzen
   lcd.print(line2);
 }
@@ -323,9 +305,31 @@ void halt(const __FlashStringHelper* msg) {
   buzzError();
   dataFile.close();
   Serial.println(msg);
-  lcd.setColor(RED);
+
   lcdPrint1(msg);
-  while(true);
+  lcd.setRGB(255,0,0); //RED
+
+  delay(999999);
+}
+
+int nValidSensors() {
+  int nValid = 0;
+  for (int i = bottleMinIndex; i <= bottleMaxIndex; i++) {
+    if (sensorValid[i]) {
+      nValid++;
+    }
+  }
+  Serial.print(F("Valid sensors=")); Serial.println(nValid);
+
+  if (nValid < 1) {
+    halt(F("No sensors"));
+  }
+  else if (nValid < 2) {
+    // Need at least 2 valid sensors for high confidence results
+    Serial.println(F("WARNING less than 2 valid bottle sensors!"));
+  }
+  
+  return nValid;
 }
 
 void setup() {  
@@ -365,7 +369,7 @@ void loop() {
     Serial.println(F("C: Waiting to warm up ..."));
     lcdPrint1(F("Warming up"));
     sprintf(sprintfBuffer, "%sC", tempToStr(bottleTemp));
-    lcdPrint2(sprintfBuffer);
+    lcdPrint2(P(sprintfBuffer));
 
     delay(waitInterval);
     snapTemp();
@@ -381,7 +385,6 @@ void loop() {
     Serial.println(F("ERROR - insufficient sensors!"));
     lcd.setColor(RED);
     errorState = true;
-    delay(10000);
   }
   else {
     buzzAlert();
@@ -397,7 +400,7 @@ void loop() {
 
     lcdPrint1(F("Pasteurizing"));
     sprintf(sprintfBuffer, "%sC   %d PUs", tempToStr(bottleTemp), (int)minPu);
-    lcdPrint2(sprintfBuffer);
+    lcdPrint2(P(sprintfBuffer));
 
     if (minPu >= puTarget) {
       state = cooling;
