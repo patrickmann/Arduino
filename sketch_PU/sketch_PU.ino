@@ -36,7 +36,7 @@ DallasTemperature dallas(&oneWire);
 DS1307 clock; // RTC clock object
 rgb_lcd lcd;  // Display object
 
-const float startStopAccumulating = 35; // 50 start or stop cycle when passing through this temp
+const float startStopAccumulating = 50; // 50 start or stop cycle when passing through this temp
 const float bottleMaxDiff = 5; // threshold in degrees C to detect unused sensor
 const float sensorThreshold = 1; // threshold in degrees C to enable sensor
 const float maxTemp = 80; // alert if exceeded
@@ -75,11 +75,11 @@ void buzz(int duration, int repeat) {
 }
 
 void buzzError() {
-  //buzz(80,10);
+  buzz(80,10);
 }
 
 void buzzAlert() {
-  //buzz(1000,1);
+  buzz(1000,1);
 }
 
 void snapToSD() {
@@ -125,7 +125,7 @@ void snapPu() {
     Serial.print(F("WARNING neg. delay"));
   }
   else {
-    Serial.print(F("Delaying: ")); Serial.println(measureInterval - diffMillis);
+    //Serial.print(F("Delaying: ")); Serial.println(measureInterval - diffMillis);
     delay(measureInterval - diffMillis);
   }
 
@@ -140,7 +140,7 @@ void snapPu() {
   Serial.println();
 
   sprintf(sprintfBuffer, "%sC   %d PUs", tempToStr(bottleTemp), (int)minPu);
-  lcdPrint2(P(sprintfBuffer));
+  lcdPrint2(sprintfBuffer);
   snapToSD();
 }
 
@@ -154,7 +154,7 @@ void snapTemp() {
 
 // Increment PUs and return the lowest valid total PU value
 float addPu() {
-  const float minPasteurTemp = 40; // 60
+  const float minPasteurTemp = 60; // 60
   const float fractionalMin = measureInterval / 60000; // measure interval in minutes
   
   float minPu = 999;
@@ -255,7 +255,7 @@ void printTemp (int index, float temp) {
   Serial.print(F("C   "));
 }
 
-void lcdPrint(const __FlashStringHelper* line1, const __FlashStringHelper* line2) {
+void lcdPrint(const __FlashStringHelper* line1, const char* line2) {
   lcdPrint1(line1);
   lcdPrint2(line2);
 }
@@ -266,15 +266,16 @@ void lcdPrint1(const __FlashStringHelper* line1) {
   lcd.print(line1);
 }
 
-void lcdPrint2(const __FlashStringHelper* line2) {
+void lcdPrint2(const char* line2) {
   lcd.setCursor(0, 1); // Cursor im Display auf den Anfang der zweiten Zeile setzen
   lcd.print(line2);
 }
 
 bool writeToSD(const char* data) {
-  Serial.println(data);
+  //Serial.println(data);
   if (1 > dataFile.println(data)) {
     Serial.print(F("Error writing to SD: ")); Serial.println(logFileName);
+    buzzError();
     return false;
   }      
   dataFile.sync();    
@@ -358,7 +359,7 @@ void loop() {
   buzzAlert();
   if (!errorState) {
     // Don't erase prior error color
-    lcd.setRGB(128, 128, 128);
+    lcd.setRGB(64,64,255);
   }
   state = waiting;
   snapTemp();
@@ -369,7 +370,7 @@ void loop() {
     Serial.println(F("C: Waiting to warm up ..."));
     lcdPrint1(F("Warming up"));
     sprintf(sprintfBuffer, "%sC", tempToStr(bottleTemp));
-    lcdPrint2(P(sprintfBuffer));
+    lcdPrint2(sprintfBuffer);
 
     delay(waitInterval);
     snapTemp();
@@ -379,11 +380,11 @@ void loop() {
 
   Serial.println(F("*** Cycle start: accumulating"));
   errorState = false;
-  lcd.setColor(BLUE);
+  lcd.setRGB(255,255,255);
   if (nValidSensors() < 2) {
     buzzError();
     Serial.println(F("ERROR - insufficient sensors!"));
-    lcd.setColor(RED);
+    lcd.setRGB(255,0,0);
     errorState = true;
   }
   else {
@@ -400,13 +401,13 @@ void loop() {
 
     lcdPrint1(F("Pasteurizing"));
     sprintf(sprintfBuffer, "%sC   %d PUs", tempToStr(bottleTemp), (int)minPu);
-    lcdPrint2(P(sprintfBuffer));
+    lcdPrint2(sprintfBuffer);
 
     if (minPu >= puTarget) {
       state = cooling;
       Serial.println(F(" *** Cycle end: target PU reached"));
       if (!errorState) {
-        lcd.setColor(GREEN);
+        lcd.setRGB(0,255,0);
         buzzAlert();
       }
       lcdPrint1(F("Done - cool it!"));
@@ -416,9 +417,9 @@ void loop() {
       state = waiting;
       Serial.println(F(" *** Cycle interrupted prematurely"));
       buzzError();
-      lcd.setColor(RED);
+      lcd.setRGB(255,0,0);
       errorState = true;
-      lcdPrint(F("Aborted"), F("prematurely"));
+      lcdPrint(F("Aborted"), "prematurely");
       delay(10000);
     }
   }
