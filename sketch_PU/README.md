@@ -1,6 +1,7 @@
 # PU Meter
 Sketch to power a device to measure Pasteurization Units in a water bath pasteurizer. 
 The thresholds and pasteurization targets are based on hard cider; but you can easily modify them for other applications.
+You will also need to replace the current sensor addresses with your own. 
 
 >delta PU = 1/60 * 10 ^ ((T-60)/7)
 
@@ -12,7 +13,7 @@ when the target threshold is reached. We track PU accummulation both as temperat
 from the bath before hitting the target PU, taking advantage of PU accummulation during cooldown, while still obtaining accurate PU totals.
 
 Smart detection of sensors allows user to insert sensors one at a time. As long as the setup is complete before hitting the 
-threshold for PU accummulation, all sensors will be used for PU measurement. Sensors inserted after PU accummulation has started will be ignored to avoid erroneous results. Thresholds tests are based on the lowest valid temperature and PU values across all sensors - this keeps us on the safe side when there are cool spots in the bath.
+threshold for PU accummulation, all sensors will be used for PU measurement. Sensors inserted after PU accummulation has started will be ignored to avoid erroneous results. If a sensor fails during pasteurizing, we also ignore the associated PU data. Thresholds tests are based on the lowest valid temperature and PU values across all sensors - this keeps us on the safe side when there are cool spots in the bath.
 
 ## Features
 * Compute PUs from temperature readings
