@@ -4,7 +4,7 @@ The thresholds and pasteurization targets are based on hard cider; but you can e
 You will also need to replace the current sensor addresses with your own. 
 
 PUs are calculated according to this formula:
->delta PU = 1/60 * 10 ^ ((T-60)/7)
+>delta PU per second = 1/60 * 10 ^ ((T-60)/7)
 
 **Disclaimer: use entirely at your own risk. Accuracy and validity of results is NOT guaranteed.**
 
