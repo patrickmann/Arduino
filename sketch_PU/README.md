@@ -8,6 +8,8 @@ PUs are calculated according to this formula:
 
 **Disclaimer: use entirely at your own risk. Accuracy and validity of results is NOT guaranteed.**
 
+![Sample PU chart from CSV data on SD card](sample_pu_chart.PNG)
+
 ## How it works
 After startup the PU meter waits for temperature to increase to measuring threshold. It then starts adding up PUs and alerts
 when the target threshold is reached. We track PU accummulation both as temperature rises and falls. I.e. product may be removed
